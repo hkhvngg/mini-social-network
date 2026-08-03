@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import type { MeProfile } from './types/person-public.type';
 import { UsersService } from './users.service';
@@ -18,6 +22,8 @@ describe('UsersService', () => {
         email: 'duplicate@example.com',
         passwordHash: 'hash',
         fullName: 'Duplicate User',
+        location: 'Hà Nội',
+        interests: ['Công nghệ'],
       }),
     ).rejects.toBeInstanceOf(ConflictException);
 
@@ -53,6 +59,8 @@ describe('UsersService', () => {
       bio: 'Existing bio',
       avatarUrl: null,
       isPrivate: false,
+      location: 'TP. Hồ Chí Minh',
+      interests: ['Thiết kế'],
       canViewConnections: true,
       createdAt: '2026-07-31T00:00:00Z',
       updatedAt: '2026-07-31T00:01:00Z',
@@ -86,6 +94,10 @@ describe('UsersService', () => {
         avatarUrl: null,
         hasIsPrivate: false,
         isPrivate: null,
+        hasLocation: false,
+        location: null,
+        hasInterests: false,
+        interests: null,
       },
     );
   });
@@ -138,6 +150,21 @@ describe('UsersService', () => {
         viewerPersonId: 'person-1',
         query: 'mai',
       }),
+    );
+  });
+
+  it('returns not found for an unknown public profile', async () => {
+    const executeRead = jest.fn().mockResolvedValue({ records: [] });
+    const service = new UsersService({
+      executeRead,
+    } as unknown as Neo4jService);
+
+    await expect(
+      service.findPublicProfileByUsername('missing.user', 'viewer-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(executeRead).toHaveBeenCalledWith(
+      expect.stringContaining('MATCH (person:Person {username: $username})'),
+      { username: 'missing.user', viewerPersonId: 'viewer-1' },
     );
   });
 });

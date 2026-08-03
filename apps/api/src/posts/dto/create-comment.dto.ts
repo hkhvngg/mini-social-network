@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 export class CreateCommentDto {
   @ApiProperty({ minLength: 1, maxLength: 2000, example: 'Bài viết hay quá!' })
@@ -11,4 +11,9 @@ export class CreateCommentDto {
   @IsString()
   @Length(1, 2000)
   content!: string;
+
+  @ApiProperty({ required: false, format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  parentCommentId?: string;
 }

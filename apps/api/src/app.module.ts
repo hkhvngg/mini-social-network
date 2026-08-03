@@ -7,9 +7,12 @@ import { validateEnvironment } from './config/environment.validation';
 import { FollowsModule } from './follows/follows.module';
 import { HealthModule } from './health/health.module';
 import { Neo4jModule } from './neo4j/neo4j.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PostsModule } from './posts/posts.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { ReportsModule } from './reports/reports.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { UploadsModule } from './uploads/uploads.module';
     PostsModule,
     UploadsModule,
     RecommendationsModule,
+    NotificationsModule,
+    ReportsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

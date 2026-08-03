@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AppShell } from "@/components/layout/app-shell";
@@ -8,21 +8,30 @@ import { AppShell } from "@/components/layout/app-shell";
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const needsOnboarding = Boolean(
+    user && (!user.interests.length || !user.location.trim()),
+  );
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
-  }, [loading, user, router]);
+    if (!loading && needsOnboarding && pathname !== "/onboarding") {
+      router.replace("/onboarding");
+    }
+  }, [loading, user, needsOnboarding, pathname, router]);
 
   if (loading || !user) {
     return (
       <div className="grid min-h-screen place-items-center">
         <div className="flex items-center gap-3 font-bold text-slate-500">
           <span className="size-5 animate-spin rounded-full border-2 border-black border-t-transparent dark:border-white dark:border-t-transparent" />
-          Đang mở mạng lưới của bạn...
+          Đang chuẩn bị không gian của bạn...
         </div>
       </div>
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  if (needsOnboarding && pathname !== "/onboarding") return null;
+
+  return pathname === "/onboarding" ? children : <AppShell>{children}</AppShell>;
 }

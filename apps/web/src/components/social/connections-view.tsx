@@ -14,21 +14,21 @@ import { cn } from "@/lib/utils";
 const config = {
   friends: {
     title: "Bạn bè",
-    description: "Những kết nối hai chiều trong mạng lưới của bạn.",
+    description: "Những người bạn và họ cùng theo dõi nhau.",
     endpoint: "/users/me/friends",
-    empty: "Bạn chưa có kết nối bạn bè nào.",
+    empty: "Khi bạn và một người cùng theo dõi nhau, họ sẽ xuất hiện ở đây.",
     icon: HeartHandshake,
   },
   followers: {
     title: "Người theo dõi",
-    description: "Những người đang theo dõi hoạt động của bạn.",
+    description: "Những người muốn xem thêm các bài viết của bạn.",
     endpoint: "/users/me/followers",
     empty: "Chưa có ai theo dõi bạn.",
     icon: UsersRound,
   },
   following: {
     title: "Đang theo dõi",
-    description: "Những câu chuyện bạn đã chọn quan tâm.",
+    description: "Những người có bài viết bạn muốn theo dõi.",
     endpoint: "/users/me/following",
     empty: "Bạn chưa theo dõi ai.",
     icon: UserRoundCheck,
@@ -85,7 +85,7 @@ export function ConnectionsView({
       {query.isLoading ? <PageLoading /> : null}
       {query.isError ? <ErrorState message={getApiError(query.error)} /> : null}
       {!query.isLoading && !query.data?.length ? (
-        <EmptyState title="Danh sách trống" description={page.empty} />
+        <EmptyState title={`Chưa có ${page.title.toLowerCase()}`} description={page.empty} />
       ) : null}
       <Card className="divide-y divide-neutral-200 overflow-hidden dark:divide-neutral-800">
         {query.data?.map((person) => (
@@ -124,7 +124,12 @@ function ConnectionRow({
         <span className="block truncate text-xs text-slate-500">@{person.username}</span>
         {person.bio ? <span className="mt-1 block truncate text-xs text-slate-400">{person.bio}</span> : null}
       </Link>
-      <FollowButton personId={person.personId} isFollowing={isFollowing} compact />
+      <FollowButton
+        personId={person.personId}
+        isFollowing={isFollowing}
+        relationship={status.data}
+        compact
+      />
     </div>
   );
 }

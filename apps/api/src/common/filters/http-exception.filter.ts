@@ -66,7 +66,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     return {
       message:
         statusCode === 500
-          ? 'Internal server error'
+          ? 'Misonet đang gặp chút trục trặc. Bạn thử lại sau nhé.'
           : this.statusText(statusCode),
       error: this.statusText(statusCode),
     };

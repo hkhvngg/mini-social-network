@@ -130,7 +130,7 @@ export function PostComposer() {
             variant="secondary"
             size="icon"
             className="absolute right-2 top-2"
-            aria-label="Bỏ media đã chọn"
+            aria-label="Bỏ ảnh hoặc video đã chọn"
             onClick={clearMedia}
           >
             <X className="size-4" />

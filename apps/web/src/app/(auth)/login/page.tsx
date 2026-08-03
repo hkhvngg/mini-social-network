@@ -9,11 +9,18 @@ import { z } from "zod";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { getApiError } from "@/lib/api";
 
 const schema = z.object({
-  identifier: z.string().trim().min(1, "Nhập username hoặc email"),
-  password: z.string().min(1, "Nhập mật khẩu"),
+  identifier: z.string().trim().min(1, "Bạn chưa nhập email hoặc tên người dùng."),
+  password: z
+    .string()
+    .min(1, "Bạn chưa nhập mật khẩu.")
+    .regex(
+      /^[\x21-\x7E]+$/,
+      "Mật khẩu chỉ dùng chữ không dấu, số và ký tự trên bàn phím tiếng Anh.",
+    ),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -24,7 +31,10 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    mode: "onTouched",
+  });
 
   async function submit(values: FormValues) {
     try {
@@ -44,18 +54,21 @@ export default function LoginPage() {
         Đăng nhập
       </p>
       <h2 className="mt-2 text-3xl font-extrabold tracking-tight">
-        Tiếp tục cuộc trò chuyện
+        Mừng bạn quay lại
       </h2>
       <p className="mt-2 text-sm text-slate-500">
-        Nhập username hoặc email để vào bảng tin của bạn.
+        Đăng nhập để xem hôm nay mọi người đang kể gì nhé.
       </p>
 
-      <form className="mt-8 space-y-5" onSubmit={handleSubmit(submit)}>
-        <Field label="Username hoặc email" error={errors.identifier?.message}>
-          <Input autoComplete="username" placeholder="an.nguyen" {...register("identifier")} />
+      <form className="mt-8 space-y-5" noValidate onSubmit={handleSubmit(submit)}>
+        <Field label="Tên người dùng hoặc email" error={errors.identifier?.message}>
+          <Input aria-invalid={Boolean(errors.identifier)} autoComplete="username" placeholder="an.nguyen" {...register("identifier")} />
         </Field>
         <Field label="Mật khẩu" error={errors.password?.message}>
-          <Input type="password" autoComplete="current-password" placeholder="••••••••" {...register("password")} />
+          <PasswordInput aria-invalid={Boolean(errors.password)} autoComplete="current-password" placeholder="••••••••" {...register("password")} />
+          <span className="block text-xs font-normal text-neutral-500">
+            Dùng bàn phím tiếng Anh, không nhập chữ có dấu hoặc khoảng trắng.
+          </span>
         </Field>
         <Button className="h-12 w-full" disabled={isSubmitting}>
           {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
@@ -68,10 +81,6 @@ export default function LoginPage() {
         <Link className="font-bold underline" href="/register">
           Tạo tài khoản
         </Link>
-      </p>
-      <p className="mt-5 text-center text-xs leading-5 text-slate-400">
-        Phiên bản đồ án lưu access token trong trình duyệt. Không dùng cho dữ liệu
-        nhạy cảm hoặc môi trường production.
       </p>
     </div>
   );
@@ -90,7 +99,7 @@ function Field({
     <label className="block space-y-2 text-sm font-semibold">
       <span>{label}</span>
       {children}
-      {error ? <span className="block text-xs font-medium text-rose-600">{error}</span> : null}
+      {error ? <span role="alert" className="block text-xs font-medium text-rose-600">{error}</span> : null}
     </label>
   );
 }

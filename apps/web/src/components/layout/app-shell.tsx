@@ -3,21 +3,20 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
-  Ellipsis,
   Home,
-  LogOut,
   PenSquare,
   Search,
   Sparkles,
   UserRound,
   UsersRound,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/auth-provider";
 import { Avatar } from "../ui/avatar";
-import { Button } from "../ui/button";
 import { ThemeToggle } from "./theme-toggle";
+import { AccountMenu } from "./account-menu";
 import { api } from "@/lib/api";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,7 +24,7 @@ import { MisonetLogo } from "../brand/misonet-logo";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const recommendations = useQuery({
     queryKey: ["recommendations", "sidebar"],
     queryFn: async () =>
@@ -35,6 +34,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )
       ).data.items,
   });
+  const unreadNotifications = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: async () =>
+      (await api.get<{ unreadCount: number }>("/notifications/unread-count"))
+        .data.unreadCount,
+    refetchInterval: 30_000,
+  });
 
   if (!user) return null;
 
@@ -42,20 +48,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/feed", label: "Trang chủ", icon: Home },
     { href: "/search", label: "Tìm kiếm", icon: Search },
     { href: "/feed#composer", label: "Tạo bài", icon: PenSquare },
-    { href: "/activity", label: "Hoạt động", icon: Bell },
+    { href: "/activity", label: "Thông báo", icon: Bell },
     { href: `/profile/${user.username}`, label: "Trang cá nhân", icon: UserRound },
     { href: "/friends", label: "Bạn bè", icon: UsersRound },
     { href: "/suggestions", label: "Gợi ý", icon: Sparkles },
+    ...(user.role === "ADMIN"
+      ? [{ href: "/admin", label: "Quản trị", icon: ShieldCheck }]
+      : []),
   ];
   const mobileNavigation = navigation.slice(0, 5);
 
   return (
-    <div className="min-h-screen bg-white pb-20 text-black dark:bg-black dark:text-white lg:pb-0">
+    <div className="min-h-screen bg-background pb-20 text-foreground lg:pb-0">
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/90 px-4 backdrop-blur dark:border-neutral-800 dark:bg-black/90 lg:hidden">
         <Link href="/feed" aria-label="Misonet — Trang chủ">
           <MisonetLogo className="size-9" />
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <AccountMenu mobile />
+        </div>
       </header>
 
       <div className="mx-auto grid max-w-[1280px] lg:grid-cols-[80px_minmax(0,640px)] lg:gap-6 lg:px-4 xl:grid-cols-[240px_minmax(0,640px)_300px]">
@@ -85,7 +97,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     active && "font-semibold text-black dark:text-white",
                   )}
                 >
-                  <Icon className="size-6 shrink-0" strokeWidth={active ? 2.5 : 2} />
+                  <span className="relative shrink-0">
+                    <Icon className="size-6" strokeWidth={active ? 2.5 : 2} />
+                    {item.href === "/activity" && unreadNotifications.data ? (
+                      <span className="absolute -right-2 -top-2 grid min-w-4 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-4 text-white">
+                        {unreadNotifications.data > 99 ? "99+" : unreadNotifications.data}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="hidden text-[15px] xl:inline">{item.label}</span>
                 </Link>
               );
@@ -97,21 +116,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <span className="ml-3 hidden text-sm text-neutral-500 xl:inline">Giao diện</span>
             </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start px-3 xl:px-4"
-              onClick={logout}
-            >
-              <LogOut className="size-5" />
-              <span className="hidden xl:inline">Đăng xuất</span>
-            </Button>
-            <div className="hidden items-center gap-3 rounded-2xl border border-neutral-200 p-3 dark:border-neutral-800 xl:flex">
-              <Avatar name={user.fullName} src={user.avatarUrl} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold">{user.fullName}</span>
-                <span className="block truncate text-xs text-neutral-500">@{user.username}</span>
-              </span>
-              <Ellipsis className="size-4" />
+            <div className="xl:hidden">
+              <AccountMenu mobile />
+            </div>
+            <div className="hidden xl:block">
+              <AccountMenu />
             </div>
           </div>
         </aside>
@@ -137,7 +146,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold">{person.fullName}</span>
                     <span className="block truncate text-xs text-neutral-500">
-                      {person.mutualFriendCount} bạn chung
+                      {person.sharedInterests.length
+                        ? `${person.sharedInterests.length} sở thích chung`
+                        : person.sameLocation
+                          ? `Cùng ở ${person.location}`
+                          : `${person.mutualFriendCount} bạn chung`}
                     </span>
                   </span>
                 </Link>
@@ -148,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <p className="mt-4 px-2 text-xs leading-5 text-neutral-500">
-            Misonet gợi ý kết nối dựa trên mạng lưới bạn chung trong Neo4j.
+            Có thể bạn từng gặp nhau đâu đó — qua bạn chung, sở thích hoặc cùng một thành phố.
           </p>
         </aside>
       </div>
@@ -166,7 +179,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-label={item.label}
                 className="grid size-11 place-items-center rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900"
               >
-                <Icon className="size-6" strokeWidth={active ? 2.6 : 2} />
+                <span className="relative">
+                  <Icon className="size-6" strokeWidth={active ? 2.6 : 2} />
+                  {item.href === "/activity" && unreadNotifications.data ? (
+                    <span className="absolute -right-2 -top-2 size-2.5 rounded-full border-2 border-white bg-rose-600 dark:border-black" />
+                  ) : null}
+                </span>
               </Link>
             );
           })}

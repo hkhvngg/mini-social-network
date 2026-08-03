@@ -16,6 +16,7 @@ Không commit `.env`, `.env.local`, token hoặc credentials. Các biến `NEXT_
 - Repository phải được commit và push lên GitHub bởi chủ dự án. Codex không tự commit hoặc push.
 - Node.js 22 và pnpm 11.18.0 được dùng trong CI.
 - AuraDB đã tồn tại và URI dùng `neo4j+s://`.
+- Chạy `pnpm schema:setup` trong `apps/api` sau khi cấu hình AuraDB để tạo constraint, index và migration moderation idempotent.
 - Cloudinary đã có cloud name, API key và API secret.
 - Tạo project Vercel trước để biết production domain; dùng domain đó cho `FRONTEND_URL` của Railway.
 
@@ -54,6 +55,8 @@ CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
 ```
+
+Đặt `JWT_EXPIRES_IN=30m` để access token và phiên đăng nhập hết hạn sau 30 phút.
 
 Yêu cầu:
 

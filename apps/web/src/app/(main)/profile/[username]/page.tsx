@@ -1,16 +1,18 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, LockKeyhole } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { CalendarDays, Flag, LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
 import { PostCard } from "@/components/posts/post-card";
 import { FollowButton } from "@/components/social/follow-button";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, PageLoading } from "@/components/ui/states";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import type { Post, Profile } from "@/lib/types";
+import { toast } from "sonner";
 
 export default function ProfilePage() {
   const params = useParams<{ username: string }>();
@@ -23,6 +25,17 @@ export default function ProfilePage() {
     queryKey: ["posts", "user", username],
     queryFn: async () =>
       (await api.get<Post[]>(`/posts/user/${username}?limit=50`)).data,
+  });
+  const report = useMutation({
+    mutationFn: ({ personId, details }: { personId: string; details: string }) =>
+      api.post("/reports", {
+        targetType: "PERSON",
+        targetId: personId,
+        reason: "OTHER",
+        details,
+      }),
+    onSuccess: () => toast.success("Đã gửi báo cáo đến quản trị viên"),
+    onError: (error) => toast.error(getApiError(error)),
   });
 
   if (profile.isLoading) return <PageLoading />;
@@ -68,11 +81,23 @@ export default function ProfilePage() {
           {person.relationship.isSelf ? (
             <EditProfileDialog profile={person} />
           ) : (
-            <FollowButton
-              personId={person.personId}
-              isFollowing={person.relationship.isFollowing}
-              relationship={person.relationship}
-            />
+            <div className="flex flex-wrap gap-2">
+              <FollowButton
+                personId={person.personId}
+                isFollowing={person.relationship.isFollowing}
+                relationship={person.relationship}
+              />
+              <Button
+                variant="ghost"
+                disabled={report.isPending}
+                onClick={() => {
+                  const details = window.prompt("Tài khoản này có vấn đề gì?")?.trim();
+                  if (details) report.mutate({ personId: person.personId, details });
+                }}
+              >
+                <Flag className="size-4" /> Báo cáo
+              </Button>
+            </div>
           )}
         </div>
 
@@ -87,20 +112,20 @@ export default function ProfilePage() {
           <Stat
             href={person.relationship.isSelf ? "/followers" : `${connectionBase}?tab=followers`}
             value={person.stats.followerCount}
-            label="Follower"
+            label="Người theo dõi"
             locked={!person.canViewConnections}
           />
           <Stat
             href={person.relationship.isSelf ? "/following" : `${connectionBase}?tab=following`}
             value={person.stats.followingCount}
-            label="Following"
+            label="Đang theo dõi"
             locked={!person.canViewConnections}
           />
         </div>
 
         {!person.canViewConnections ? (
           <p className="mt-4 flex items-center gap-2 text-sm text-neutral-500">
-            <LockKeyhole className="size-4" /> Người dùng này giữ danh sách kết nối ở chế độ riêng tư.
+            <LockKeyhole className="size-4" /> Người này chọn không công khai danh sách bạn bè và người theo dõi.
           </p>
         ) : null}
       </div>
@@ -109,11 +134,11 @@ export default function ProfilePage() {
         <h2 className="text-center text-sm font-semibold">Bài viết</h2>
       </div>
       {posts.isLoading ? <div className="p-4"><PageLoading /></div> : null}
-      {posts.isError ? <div className="p-4"><ErrorState message="Không thể tải bài viết." /></div> : null}
+      {posts.isError ? <div className="p-4"><ErrorState message="Bài viết chưa tải được. Bạn thử lại nhé." /></div> : null}
       {!posts.isLoading && !posts.data?.length ? (
         <div className="p-4 sm:p-6">
           <EmptyState
-            title="Chưa có bài viết"
+            title="Chưa có bài viết nào"
             description="Những chia sẻ mới sẽ xuất hiện tại đây."
           />
         </div>

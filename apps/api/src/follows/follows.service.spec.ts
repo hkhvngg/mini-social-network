@@ -65,10 +65,18 @@ describe('FollowsService', () => {
     });
     expect(neo4jService.executeWrite).toHaveBeenCalledWith(
       expect.stringContaining('MERGE (me)-[follow:FOLLOW]->(target)'),
-      { currentPersonId: 'person-1', targetPersonId: 'person-2' },
+      expect.objectContaining({
+        currentPersonId: 'person-1',
+        targetPersonId: 'person-2',
+        followNotificationKey: 'FOLLOW:person-1:person-2',
+      }),
     );
     expect(neo4jService.executeWrite).toHaveBeenCalledWith(
       expect.stringContaining("derivedFrom = 'MUTUAL_FOLLOW'"),
+      expect.any(Object),
+    );
+    expect(neo4jService.executeWrite).toHaveBeenCalledWith(
+      expect.stringContaining("followNotification.type = 'FOLLOW'"),
       expect.any(Object),
     );
   });

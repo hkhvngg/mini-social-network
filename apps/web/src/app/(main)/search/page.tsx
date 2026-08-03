@@ -34,7 +34,7 @@ export default function SearchPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
-            placeholder="Tìm theo tên hoặc @username"
+            placeholder="Nhập tên hoặc @tên_người_dùng"
             className="h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-neutral-500"
             aria-label="Tìm kiếm người dùng"
           />
@@ -44,19 +44,19 @@ export default function SearchPage() {
       {!deferredQuery ? (
         <div className="px-4 py-12 sm:px-6">
           <EmptyState
-            title="Tìm người trên Misonet"
-            description="Nhập tên hoặc username để khám phá và kết nối với người dùng khác."
+            title="Bạn muốn tìm ai?"
+            description="Nhập tên hoặc tên người dùng để tìm bạn bè trên Misonet."
           />
         </div>
       ) : null}
       {results.isLoading ? <div className="p-4"><PageLoading /></div> : null}
       {results.isError ? (
-        <div className="p-4"><ErrorState message="Không thể tìm kiếm lúc này." /></div>
+        <div className="p-4"><ErrorState message="Tìm kiếm đang gặp chút trục trặc. Bạn thử lại nhé." /></div>
       ) : null}
       {!results.isLoading && deferredQuery && !results.data?.length ? (
         <div className="px-4 py-12 sm:px-6">
           <EmptyState
-            title="Không tìm thấy người dùng"
+            title="Không tìm thấy ai phù hợp"
             description={`Không có kết quả phù hợp với “${deferredQuery}”.`}
           />
         </div>

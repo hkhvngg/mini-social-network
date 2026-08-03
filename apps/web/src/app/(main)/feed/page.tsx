@@ -68,16 +68,16 @@ export default function FeedPage() {
         <div className="p-4"><PageLoading /></div>
       ) : null}
       {feed.isError || following.isError ? (
-        <div className="p-4"><ErrorState message="Không thể tải bảng tin." /></div>
+        <div className="p-4"><ErrorState message="Bảng tin chưa tải được. Bạn thử lại nhé." /></div>
       ) : null}
       {!feed.isLoading && !visiblePosts?.length ? (
         <div className="p-4 sm:p-6">
           <EmptyState
-            title={tab === "following" ? "Chưa có bài từ người bạn theo dõi" : "Bảng tin đang yên ắng"}
+            title={tab === "following" ? "Chưa có bài viết mới" : "Bảng tin đang yên ắng"}
             description={
               tab === "following"
-                ? "Tìm kiếm và theo dõi thêm người dùng để xem bài viết tại đây."
-                : "Hãy đăng bài đầu tiên hoặc theo dõi thêm bạn bè."
+                ? "Theo dõi thêm những người bạn quan tâm để xem bài viết của họ tại đây."
+                : "Bạn có thể chia sẻ bài viết đầu tiên hoặc tìm thêm bạn mới."
             }
           />
         </div>

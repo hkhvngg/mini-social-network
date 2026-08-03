@@ -27,13 +27,13 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   icons: { icon: "/logo.png", apple: "/logo.png" },
-  title: "Misonet — Mạng xã hội đồ thị",
+  title: "Misonet — Có chuyện gì, mình kể nhau nghe",
   description:
-    "Kết nối bạn bè, chia sẻ khoảnh khắc và khám phá những mối quan hệ chung.",
+    "Giữ liên lạc với người bạn quý và chia sẻ những điều gần gũi mỗi ngày.",
   openGraph: {
-    title: "Misonet — Mỗi kết nối, một câu chuyện mới",
+    title: "Misonet — Có chuyện gì, mình kể nhau nghe",
     description:
-      "Kết nối bạn bè, chia sẻ khoảnh khắc và khám phá những mối quan hệ chung.",
+      "Giữ liên lạc với người bạn quý và chia sẻ những điều gần gũi mỗi ngày.",
     type: "website",
     locale: "vi_VN",
     images: [
@@ -41,15 +41,15 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1792,
         height: 933,
-        alt: "Misonet — Mỗi kết nối, một câu chuyện mới",
+        alt: "Misonet — Có chuyện gì, mình kể nhau nghe",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Misonet — Mỗi kết nối, một câu chuyện mới",
+    title: "Misonet — Có chuyện gì, mình kể nhau nghe",
     description:
-      "Kết nối bạn bè, chia sẻ khoảnh khắc và khám phá những mối quan hệ chung.",
+      "Giữ liên lạc với người bạn quý và chia sẻ những điều gần gũi mỗi ngày.",
     images: ["/og.png"],
   },
 };

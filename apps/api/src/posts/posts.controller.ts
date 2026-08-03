@@ -18,7 +18,6 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { PostIdParamDto } from './dto/post-id-param.dto';
 import { PostPaginationQueryDto } from './dto/post-pagination-query.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
-import { SharePostDto } from './dto/share-post.dto';
 import { PostsService } from './posts.service';
 import type { PostResponse } from './types/post.type';
 
@@ -115,15 +114,5 @@ export class PostsController {
     @Param() params: PostIdParamDto,
   ): Promise<PostResponse> {
     return this.postsService.unrepost(user.personId, params.postId);
-  }
-
-  @Post(':postId/share')
-  @HttpCode(200)
-  share(
-    @CurrentUser() user: AuthUser,
-    @Param() params: PostIdParamDto,
-    @Body() input: SharePostDto,
-  ): Promise<PostResponse> {
-    return this.postsService.share(user.personId, params.postId, input);
   }
 }

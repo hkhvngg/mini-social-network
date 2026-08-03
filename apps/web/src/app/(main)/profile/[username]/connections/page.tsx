@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { value: "friends", label: "Bạn bè" },
-  { value: "followers", label: "Follower" },
-  { value: "following", label: "Following" },
+  { value: "followers", label: "Người theo dõi" },
+  { value: "following", label: "Đang theo dõi" },
 ] as const;
 
 export default function ProfileConnectionsPage() {

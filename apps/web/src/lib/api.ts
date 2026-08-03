@@ -53,11 +53,32 @@ export function readToken() {
     : window.localStorage.getItem(TOKEN_KEY);
 }
 
+export function readTokenExpiresAt(): number | null {
+  const token = readToken();
+  if (!token) return null;
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(window.atob(padded)) as { exp?: unknown };
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getApiError(error: unknown) {
   if (axios.isAxiosError(error)) {
     const message = error.response?.data?.message;
-    if (Array.isArray(message)) return message[0] ?? "Dữ liệu chưa hợp lệ";
+    if (Array.isArray(message)) return message[0] ?? "Có vài thông tin cần bạn kiểm tra lại.";
     if (typeof message === "string") return message;
+    if (error.code === "ECONNABORTED") {
+      return "Phản hồi hơi lâu. Bạn thử lại một lần nữa nhé.";
+    }
+    if (!error.response) {
+      return "Chưa kết nối được tới Misonet. Bạn kiểm tra mạng rồi thử lại nhé.";
+    }
   }
-  return "Đã có lỗi xảy ra. Vui lòng thử lại.";
+  return "Misonet đang gặp chút trục trặc. Bạn thử lại sau nhé.";
 }

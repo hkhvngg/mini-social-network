@@ -5,11 +5,13 @@
 :root {
   --background: #ffffff;
   --foreground: #000000;
+  color-scheme: light;
 }
 
 .dark {
   --background: #000000;
   --foreground: #ffffff;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -39,6 +41,17 @@ input,
 textarea,
 select {
   -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea,
+select,
+option {
+  color: var(--foreground);
+}
+
+option {
+  background: var(--background);
 }
 
 ::selection {

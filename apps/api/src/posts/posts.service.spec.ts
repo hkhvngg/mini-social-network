@@ -21,10 +21,10 @@ const post: PostResponse = {
   likeCount: 0,
   commentCount: 0,
   repostCount: 0,
-  shareCount: 0,
   likedByCurrentUser: false,
   repostedByCurrentUser: false,
   isAuthor: true,
+  repostOf: null,
 };
 
 describe('PostsService', () => {
@@ -84,10 +84,15 @@ describe('PostsService', () => {
 
     await expect(service.like('person-2', 'post-1')).resolves.toBe(post);
     expect(capturedQuery).toContain('MERGE (person)-[like:LIKES]->(post)');
-    expect(neo4jService.executeWrite).toHaveBeenCalledWith(expect.any(String), {
-      currentPersonId: 'person-2',
-      postId: 'post-1',
-    });
+    expect(neo4jService.executeWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        currentPersonId: 'person-2',
+        postId: 'post-1',
+        notificationKey: 'LIKE:person-2:post-1',
+      }),
+    );
+    expect(capturedQuery).toContain("notification.type = 'LIKE'");
   });
 
   it('creates Media and HAS_MEDIA with Cypher parameters', async () => {
@@ -115,10 +120,12 @@ describe('PostsService', () => {
       likeCount: 0,
       commentCount: 0,
       repostCount: 0,
-      shareCount: 0,
       likedByCurrentUser: false,
       repostedByCurrentUser: false,
       isAuthor: true,
+      sourcePost: null,
+      sourceAuthor: null,
+      sourceMedia: [],
       media: [
         {
           properties: {
@@ -223,40 +230,46 @@ describe('PostsService', () => {
   });
 
   it('uses MERGE and parameters for idempotent reposts', async () => {
-    const executeWrite = jest.fn().mockResolvedValue({ records: [{}] });
+    const executeWrite = jest.fn().mockResolvedValue({
+      records: [{ get: () => 'repost-post-1' }],
+    });
     const neo4jService = { executeWrite };
     const service = new PostsService(
       neo4jService as unknown as Neo4jService,
       uploadsService,
     );
-    jest.spyOn(service, 'getOne').mockResolvedValue(post);
+    jest
+      .spyOn(service, 'getOne')
+      .mockResolvedValueOnce(post)
+      .mockResolvedValueOnce({
+        ...post,
+        postId: 'repost-post-1',
+        repostOf: {
+          postId: post.postId,
+          content: post.content,
+          imageUrl: post.imageUrl,
+          media: post.media,
+          privacy: post.privacy,
+          createdAt: post.createdAt,
+          author: post.author,
+        },
+      });
 
-    await expect(service.repost('person-2', 'post-1')).resolves.toBe(post);
-    expect(executeWrite).toHaveBeenCalledWith(
-      expect.stringContaining('MERGE (person)-[repost:REPOSTED]->(post)'),
-      { currentPersonId: 'person-2', postId: 'post-1' },
-    );
-  });
-
-  it('records a parameterized share channel', async () => {
-    const executeWrite = jest.fn().mockResolvedValue({ records: [{}] });
-    const neo4jService = { executeWrite };
-    const service = new PostsService(
-      neo4jService as unknown as Neo4jService,
-      uploadsService,
-    );
-    jest.spyOn(service, 'getOne').mockResolvedValue(post);
-
-    await expect(
-      service.share('person-2', 'post-1', { channel: 'NATIVE' }),
-    ).resolves.toBe(post);
-    expect(executeWrite).toHaveBeenCalledWith(
-      expect.stringContaining('share.channel = $channel'),
-      {
-        currentPersonId: 'person-2',
-        postId: 'post-1',
-        channel: 'NATIVE',
-      },
-    );
+    await expect(service.repost('person-2', 'post-1')).resolves.toMatchObject({
+      postId: 'repost-post-1',
+    });
+    const [query, parameters] = executeWrite.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(query).toContain('MERGE (repost:Post {repostKey: $repostKey})');
+    expect(query).toContain('(repost)-[relation:REPOST_OF]->(source)');
+    expect(query).not.toContain('person-2');
+    expect(parameters).toMatchObject({
+      currentPersonId: 'person-2',
+      sourcePostId: 'post-1',
+      repostKey: 'person-2:post-1',
+      privacy: 'PUBLIC',
+    });
   });
 });

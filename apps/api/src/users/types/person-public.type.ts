@@ -14,6 +14,8 @@ export type PublicProfile = {
   bio: string;
   avatarUrl: string | null;
   isPrivate: boolean;
+  location: string;
+  interests: string[];
   canViewConnections: boolean;
   createdAt: string;
   updatedAt: string;

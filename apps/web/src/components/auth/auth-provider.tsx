@@ -9,7 +9,13 @@ import {
   useEffect,
   useState,
 } from "react";
-import { api, clearToken, readToken, storeToken } from "@/lib/api";
+import {
+  api,
+  clearToken,
+  readToken,
+  readTokenExpiresAt,
+  storeToken,
+} from "@/lib/api";
 import type { AuthResponse, AuthUser } from "@/lib/types";
 
 type AuthContextValue = {
@@ -21,6 +27,7 @@ type AuthContextValue = {
     email: string;
     password: string;
     fullName: string;
+    location: string;
   }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -53,11 +60,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timeoutId);
   }, [refreshUser]);
 
+  useEffect(() => {
+    if (!user) return;
+    const expiresAt = readTokenExpiresAt();
+    if (!expiresAt) return;
+
+    const expireSession = () => {
+      clearToken();
+      setUser(null);
+      queryClient.clear();
+      router.replace("/login");
+    };
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      expireSession();
+      return;
+    }
+    const timerId = window.setTimeout(expireSession, remaining);
+    return () => window.clearTimeout(timerId);
+  }, [queryClient, router, user]);
+
   async function acceptAuth(response: AuthResponse) {
     storeToken(response.accessToken);
     setUser(response.user);
     await queryClient.invalidateQueries();
-    router.replace("/feed");
+    router.replace(
+      response.user.interests.length && response.user.location.trim()
+        ? "/feed"
+        : "/onboarding",
+    );
   }
 
   async function login(identifier: string, password: string) {
@@ -73,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string;
     password: string;
     fullName: string;
+    location: string;
   }) {
     const { data } = await api.post<AuthResponse>("/auth/register", input);
     await acceptAuth(data);

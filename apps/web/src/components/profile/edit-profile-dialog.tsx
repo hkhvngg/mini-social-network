@@ -106,7 +106,7 @@ export function EditProfileDialog({ profile }: { profile: Profile }) {
                 Chỉnh sửa hồ sơ
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-slate-500">
-                Cập nhật cách mọi người nhìn thấy bạn trên Misonet.
+                Chỉnh sửa tên, ảnh đại diện và những điều bạn muốn chia sẻ về mình.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -164,8 +164,8 @@ export function EditProfileDialog({ profile }: { profile: Profile }) {
                     Trang cá nhân riêng tư
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-slate-500">
-                    Người khác không thể xem danh sách bạn bè, follower và
-                    following của bạn.
+                    Người khác không thể xem danh sách bạn bè, người theo dõi
+                    và những người bạn đang theo dõi.
                   </span>
                 </span>
               </span>

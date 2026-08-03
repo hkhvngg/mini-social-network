@@ -8,7 +8,7 @@ const validEnvironment = {
   NEO4J_PASSWORD: 'not-a-real-password',
   NEO4J_DATABASE: 'neo4j',
   JWT_SECRET: 'a-secure-test-secret-with-32-characters',
-  JWT_EXPIRES_IN: '7d',
+  JWT_EXPIRES_IN: '30m',
   CLOUDINARY_CLOUD_NAME: 'example',
   CLOUDINARY_API_KEY: 'example',
   CLOUDINARY_API_SECRET: 'not-a-real-secret',
@@ -32,5 +32,26 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({ ...validEnvironment, NEO4J_URI: 'neo4j://db' }),
     ).toThrow('NEO4J_URI must use the neo4j+s:// AuraDB scheme');
+  });
+
+  it('rejects a JWT secret shorter than 32 characters', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, JWT_SECRET: 'too-short' }),
+    ).toThrow('JWT_SECRET must contain at least 32 characters');
+  });
+
+  it('rejects a frontend URL containing a path', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        FRONTEND_URL: 'https://misonet.example/app',
+      }),
+    ).toThrow('FRONTEND_URL must be an HTTP(S) origin without a path');
+  });
+
+  it('rejects ports outside the valid TCP range', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, PORT: '70000' }),
+    ).toThrow('PORT must be an integer between 1 and 65535');
   });
 });

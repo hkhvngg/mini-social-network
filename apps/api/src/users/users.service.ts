@@ -66,6 +66,7 @@ const PROFILE_PROJECTION = `
   CALL {
     WITH person
     OPTIONAL MATCH (person)-[:POSTED]->(post:Post)
+    WHERE coalesce(post.moderationStatus, 'VISIBLE') = 'VISIBLE'
     RETURN count(DISTINCT post) AS postCount
   }
   OPTIONAL MATCH (viewer:Person)
@@ -137,6 +138,12 @@ export class UsersService {
            bio: '',
            avatarUrl: null,
            isPrivate: false,
+           location: $location,
+           interests: $interests,
+           role: 'USER',
+           accountStatus: 'ACTIVE',
+           suspendedUntil: null,
+           moderationReason: '',
            createdAt: datetime(),
            updatedAt: datetime()
          })
@@ -147,6 +154,8 @@ export class UsersService {
           email: input.email,
           passwordHash: input.passwordHash,
           fullName: input.fullName,
+          location: input.location,
+          interests: input.interests,
         },
       );
       const record = result.records[0];
@@ -244,8 +253,17 @@ export class UsersService {
     const hasBio = input.bio !== undefined;
     const hasAvatarUrl = input.avatarUrl !== undefined;
     const hasIsPrivate = input.isPrivate !== undefined;
+    const hasLocation = input.location !== undefined;
+    const hasInterests = input.interests !== undefined;
 
-    if (!hasFullName && !hasBio && !hasAvatarUrl && !hasIsPrivate) {
+    if (
+      !hasFullName &&
+      !hasBio &&
+      !hasAvatarUrl &&
+      !hasIsPrivate &&
+      !hasLocation &&
+      !hasInterests
+    ) {
       throw new BadRequestException('At least one profile field is required');
     }
 
@@ -256,6 +274,8 @@ export class UsersService {
              person.bio = CASE WHEN $hasBio THEN $bio ELSE person.bio END,
              person.avatarUrl = CASE WHEN $hasAvatarUrl THEN $avatarUrl ELSE person.avatarUrl END,
              person.isPrivate = CASE WHEN $hasIsPrivate THEN $isPrivate ELSE coalesce(person.isPrivate, false) END,
+             person.location = CASE WHEN $hasLocation THEN $location ELSE coalesce(person.location, '') END,
+             person.interests = CASE WHEN $hasInterests THEN $interests ELSE coalesce(person.interests, []) END,
              person.updatedAt = datetime()
          RETURN person`,
         {
@@ -268,6 +288,10 @@ export class UsersService {
           avatarUrl: input.avatarUrl ?? null,
           hasIsPrivate,
           isPrivate: input.isPrivate ?? null,
+          hasLocation,
+          location: input.location ?? null,
+          hasInterests,
+          interests: input.interests ?? null,
         },
       );
 

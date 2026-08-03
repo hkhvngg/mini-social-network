@@ -28,7 +28,7 @@ export default function PostDetailPage() {
         <h1 className="font-bold">Bài viết</h1>
       </header>
       {post.isLoading ? <div className="p-5"><PageLoading /></div> : null}
-      {post.isError ? <div className="p-5"><ErrorState message="Không thể tải bài viết hoặc bạn không có quyền xem." /></div> : null}
+      {post.isError ? <div className="p-5"><ErrorState message="Bài viết không còn tồn tại hoặc người đăng không chia sẻ bài này với bạn." /></div> : null}
       {post.data ? (
         <>
           <PostCard post={post.data} />

@@ -30,7 +30,7 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  message = "Không thể tải dữ liệu.",
+  message = "Nội dung chưa tải được. Bạn thử lại nhé.",
 }: {
   message?: string;
 }) {

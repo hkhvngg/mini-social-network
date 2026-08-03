@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import neo4j, { DateTime, Node } from 'neo4j-driver';
+import { randomUUID } from 'node:crypto';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import type { PaginationQueryDto } from './dto/pagination-query.dto';
 import type { ConnectionListItem } from './types/connection-list-item.type';
@@ -67,6 +68,13 @@ export class FollowsService {
        MATCH (target:Person {personId: $targetPersonId})
        MERGE (me)-[follow:FOLLOW]->(target)
        ON CREATE SET follow.followedAt = datetime()
+       MERGE (followNotification:Notification {notificationKey: $followNotificationKey})
+       ON CREATE SET followNotification.notificationId = $followNotificationId,
+                     followNotification.type = 'FOLLOW',
+                     followNotification.createdAt = follow.followedAt,
+                     followNotification.readAt = null
+       MERGE (me)-[:TRIGGERED]->(followNotification)
+       MERGE (followNotification)-[:FOR]->(target)
        WITH me, target, follow
        OPTIONAL MATCH (target)-[reverseFollow:FOLLOW]->(me)
        WITH me, target, follow, reverseFollow,
@@ -76,11 +84,34 @@ export class FollowsService {
          MERGE (firstPerson)-[newFriend:FRIEND]->(secondPerson)
          ON CREATE SET newFriend.since = datetime(),
                        newFriend.derivedFrom = 'MUTUAL_FOLLOW'
+         MERGE (friendForTarget:Notification {notificationKey: $friendForTargetKey})
+         ON CREATE SET friendForTarget.notificationId = $friendForTargetId,
+                       friendForTarget.type = 'FRIEND',
+                       friendForTarget.createdAt = datetime(),
+                       friendForTarget.readAt = null
+         MERGE (me)-[:TRIGGERED]->(friendForTarget)
+         MERGE (friendForTarget)-[:FOR]->(target)
+         MERGE (friendForMe:Notification {notificationKey: $friendForMeKey})
+         ON CREATE SET friendForMe.notificationId = $friendForMeId,
+                       friendForMe.type = 'FRIEND',
+                       friendForMe.createdAt = datetime(),
+                       friendForMe.readAt = null
+         MERGE (target)-[:TRIGGERED]->(friendForMe)
+         MERGE (friendForMe)-[:FOR]->(me)
        )
        WITH me, target, follow, reverseFollow
        OPTIONAL MATCH (me)-[friend:FRIEND]-(target)
        ${RELATIONSHIP_RETURN}`,
-      { currentPersonId, targetPersonId },
+      {
+        currentPersonId,
+        targetPersonId,
+        followNotificationKey: `FOLLOW:${currentPersonId}:${targetPersonId}`,
+        followNotificationId: randomUUID(),
+        friendForTargetKey: `FRIEND:${currentPersonId}:${targetPersonId}`,
+        friendForTargetId: randomUUID(),
+        friendForMeKey: `FRIEND:${targetPersonId}:${currentPersonId}`,
+        friendForMeId: randomUUID(),
+      },
     );
 
     return this.mapRelationship(record);
@@ -100,8 +131,21 @@ export class FollowsService {
       `MATCH (me:Person {personId: $currentPersonId})
        MATCH (target:Person {personId: $targetPersonId})
        OPTIONAL MATCH (me)-[existingFollow:FOLLOW]->(target)
-       WITH me, target, collect(existingFollow) AS follows
+       OPTIONAL MATCH (followNotification:Notification {
+         notificationKey: $followNotificationKey
+       })
+       OPTIONAL MATCH (friendForTarget:Notification {
+         notificationKey: $friendForTargetKey
+       })
+       OPTIONAL MATCH (friendForMe:Notification {
+         notificationKey: $friendForMeKey
+       })
+       WITH me, target, collect(existingFollow) AS follows,
+            collect(DISTINCT followNotification) +
+            collect(DISTINCT friendForTarget) +
+            collect(DISTINCT friendForMe) AS obsoleteNotifications
        FOREACH (existing IN follows | DELETE existing)
+       FOREACH (notification IN obsoleteNotifications | DETACH DELETE notification)
        WITH me, target
        OPTIONAL MATCH (me)-[existingFriend:FRIEND]-(target)
        WITH me, target, collect(existingFriend) AS friends
@@ -110,7 +154,13 @@ export class FollowsService {
        OPTIONAL MATCH (target)-[reverseFollow:FOLLOW]->(me)
        WITH me, target, null AS follow, reverseFollow, null AS friend
        ${RELATIONSHIP_RETURN}`,
-      { currentPersonId, targetPersonId },
+      {
+        currentPersonId,
+        targetPersonId,
+        followNotificationKey: `FOLLOW:${currentPersonId}:${targetPersonId}`,
+        friendForTargetKey: `FRIEND:${currentPersonId}:${targetPersonId}`,
+        friendForMeKey: `FRIEND:${targetPersonId}:${currentPersonId}`,
+      },
     );
 
     return this.mapRelationship(record);

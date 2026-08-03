@@ -14,7 +14,6 @@ import type { MediaResourceType } from '../uploads/types/uploaded-media.type';
 import type { CreatePostDto } from './dto/create-post.dto';
 import type { PostPaginationQueryDto } from './dto/post-pagination-query.dto';
 import type { UpdatePostDto } from './dto/update-post.dto';
-import type { SharePostDto } from './dto/share-post.dto';
 import type {
   PostAuthor,
   PostMedia,
@@ -28,11 +27,13 @@ type PostRecord = {
   likeCount: Integer | number;
   commentCount: Integer | number;
   repostCount: Integer | number;
-  shareCount: Integer | number;
   likedByCurrentUser: boolean;
   repostedByCurrentUser: boolean;
   isAuthor: boolean;
   media: Node[];
+  sourcePost: Node | null;
+  sourceAuthor: Node | null;
+  sourceMedia: Node[];
 };
 
 type OwnershipRecord = { authorPersonId: string };
@@ -40,6 +41,7 @@ type DeletionRecord = {
   authorPersonId: string;
   media: Array<{ publicId: string; resourceType: MediaResourceType }>;
 };
+type RepostRecord = { repostPostId: string };
 
 const POST_PROJECTION = `
   CALL {
@@ -49,27 +51,46 @@ const POST_PROJECTION = `
   }
   CALL {
     WITH post
-    OPTIONAL MATCH (:Comment)-[commentedOn:ON_POST]->(post)
+    OPTIONAL MATCH (comment:Comment)-[commentedOn:ON_POST]->(post)
+    WHERE coalesce(comment.moderationStatus, 'VISIBLE') = 'VISIBLE'
     RETURN count(commentedOn) AS commentCount
   }
   CALL {
     WITH post
-    OPTIONAL MATCH (:Person)-[repost:REPOSTED]->(post)
+    OPTIONAL MATCH (:Post)-[repost:REPOST_OF]->(post)
     RETURN count(repost) AS repostCount
-  }
-  CALL {
-    WITH post
-    OPTIONAL MATCH (:Person)-[share:SHARED]->(post)
-    RETURN count(share) AS shareCount
   }
   CALL {
     WITH post
     OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
     RETURN collect(media) AS media
   }
-  RETURN post, author, likeCount, commentCount, repostCount, shareCount, media,
+  CALL {
+    WITH post, viewer
+    OPTIONAL MATCH (post)-[:REPOST_OF]->(candidate:Post)
+    OPTIONAL MATCH (candidateAuthor:Person)-[:POSTED]->(candidate)
+    WITH candidate, candidateAuthor, viewer,
+         candidate IS NOT NULL AND
+         coalesce(candidate.moderationStatus, 'VISIBLE') = 'VISIBLE' AND (
+           candidateAuthor = viewer OR candidate.privacy = 'PUBLIC' OR
+           (candidate.privacy = 'FRIENDS' AND
+            EXISTS { MATCH (viewer)-[:FRIEND]-(candidateAuthor) })
+         ) AS canViewSource
+    OPTIONAL MATCH (candidate)-[:HAS_MEDIA]->(candidateMedia:Media)
+    WITH candidate, candidateAuthor, canViewSource,
+         collect(candidateMedia) AS candidateMediaItems
+    RETURN CASE WHEN canViewSource THEN candidate ELSE null END AS sourcePost,
+           CASE WHEN canViewSource THEN candidateAuthor ELSE null END AS sourceAuthor,
+           CASE WHEN canViewSource THEN candidateMediaItems ELSE [] END AS sourceMedia
+  }
+  RETURN post, author, likeCount, commentCount, repostCount, media,
+         sourcePost, sourceAuthor, sourceMedia,
          EXISTS { MATCH (viewer)-[:LIKES]->(post) } AS likedByCurrentUser,
-         EXISTS { MATCH (viewer)-[:REPOSTED]->(post) } AS repostedByCurrentUser,
+         (EXISTS {
+           MATCH (viewer)-[:POSTED]->(:Post)-[:REPOST_OF]->(post)
+         } OR EXISTS {
+           MATCH (viewer)-[:POSTED]->(post)-[:REPOST_OF]->(:Post)
+         }) AS repostedByCurrentUser,
          viewer.personId = author.personId AS isAuthor
 `;
 
@@ -92,6 +113,8 @@ export class PostsService {
            content: $content,
            imageUrl: $imageUrl,
            privacy: $privacy,
+           moderationStatus: 'VISIBLE',
+           moderationReason: '',
            createdAt: datetime(),
            updatedAt: datetime()
          })
@@ -112,11 +135,12 @@ export class PostsService {
            CREATE (post)-[:HAS_MEDIA {attachedAt: datetime()}]->(media)
          )
          WITH author, author AS viewer, post, 0 AS likeCount,
-              0 AS commentCount, 0 AS repostCount, 0 AS shareCount
+              0 AS commentCount, 0 AS repostCount
          OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
-         RETURN post, author, likeCount, commentCount, repostCount, shareCount,
+         RETURN post, author, likeCount, commentCount, repostCount,
                 collect(media) AS media, false AS likedByCurrentUser,
-                false AS repostedByCurrentUser, true AS isAuthor`,
+                false AS repostedByCurrentUser, true AS isAuthor,
+                null AS sourcePost, null AS sourceAuthor, [] AS sourceMedia`,
         {
           currentPersonId,
           postId: randomUUID(),
@@ -163,39 +187,12 @@ export class PostsService {
       const result = await this.neo4jService.executeRead<PostRecord>(
         `MATCH (viewer:Person {personId: $currentPersonId})
          MATCH (author:Person)-[:POSTED]->(post:Post)
-         WHERE author = viewer
-            OR post.privacy = 'PUBLIC'
-            OR (post.privacy = 'FRIENDS' AND
-                EXISTS { MATCH (viewer)-[:FRIEND]-(author) })
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[like:LIKES]->(post)
-           RETURN count(like) AS likeCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Comment)-[commentedOn:ON_POST]->(post)
-           RETURN count(commentedOn) AS commentCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[repost:REPOSTED]->(post)
-           RETURN count(repost) AS repostCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[share:SHARED]->(post)
-           RETURN count(share) AS shareCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
-           RETURN collect(media) AS media
-         }
-         RETURN post, author, likeCount, commentCount, repostCount, shareCount, media,
-                EXISTS { MATCH (viewer)-[:LIKES]->(post) } AS likedByCurrentUser,
-                EXISTS { MATCH (viewer)-[:REPOSTED]->(post) } AS repostedByCurrentUser,
-                viewer.personId = author.personId AS isAuthor
+         WHERE coalesce(post.moderationStatus, 'VISIBLE') = 'VISIBLE'
+           AND (author = viewer
+             OR post.privacy = 'PUBLIC'
+             OR (post.privacy = 'FRIENDS' AND
+                 EXISTS { MATCH (viewer)-[:FRIEND]-(author) }))
+         ${POST_PROJECTION}
          ORDER BY post.createdAt DESC, post.postId DESC
          SKIP $skip LIMIT $limit`,
         {
@@ -222,39 +219,12 @@ export class PostsService {
       const result = await this.neo4jService.executeRead<PostRecord>(
         `MATCH (viewer:Person {personId: $currentPersonId})
          MATCH (author:Person {username: $username})-[:POSTED]->(post:Post)
-         WHERE author = viewer
-            OR post.privacy = 'PUBLIC'
-            OR (post.privacy = 'FRIENDS' AND
-                EXISTS { MATCH (viewer)-[:FRIEND]-(author) })
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[like:LIKES]->(post)
-           RETURN count(like) AS likeCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Comment)-[commentedOn:ON_POST]->(post)
-           RETURN count(commentedOn) AS commentCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[repost:REPOSTED]->(post)
-           RETURN count(repost) AS repostCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (:Person)-[share:SHARED]->(post)
-           RETURN count(share) AS shareCount
-         }
-         CALL {
-           WITH post
-           OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
-           RETURN collect(media) AS media
-         }
-         RETURN post, author, likeCount, commentCount, repostCount, shareCount, media,
-                EXISTS { MATCH (viewer)-[:LIKES]->(post) } AS likedByCurrentUser,
-                EXISTS { MATCH (viewer)-[:REPOSTED]->(post) } AS repostedByCurrentUser,
-                viewer.personId = author.personId AS isAuthor
+         WHERE coalesce(post.moderationStatus, 'VISIBLE') = 'VISIBLE'
+           AND (author = viewer
+             OR post.privacy = 'PUBLIC'
+             OR (post.privacy = 'FRIENDS' AND
+                 EXISTS { MATCH (viewer)-[:FRIEND]-(author) }))
+         ${POST_PROJECTION}
          ORDER BY post.createdAt DESC, post.postId DESC
          SKIP $skip LIMIT $limit`,
         {
@@ -275,10 +245,11 @@ export class PostsService {
       const result = await this.neo4jService.executeRead<PostRecord>(
         `MATCH (viewer:Person {personId: $currentPersonId})
          MATCH (author:Person)-[:POSTED]->(post:Post {postId: $postId})
-         WHERE author = viewer
-            OR post.privacy = 'PUBLIC'
-            OR (post.privacy = 'FRIENDS' AND
-                EXISTS { MATCH (viewer)-[:FRIEND]-(author) })
+         WHERE coalesce(post.moderationStatus, 'VISIBLE') = 'VISIBLE'
+           AND (author = viewer
+             OR post.privacy = 'PUBLIC'
+             OR (post.privacy = 'FRIENDS' AND
+                 EXISTS { MATCH (viewer)-[:FRIEND]-(author) }))
          ${POST_PROJECTION}`,
         { currentPersonId, postId },
       );
@@ -336,6 +307,21 @@ export class PostsService {
   ): Promise<{ deleted: true; postId: string }> {
     const media = await this.getOwnedMedia(currentPersonId, postId);
 
+    return this.deletePostAndAssets(postId, media, currentPersonId);
+  }
+
+  async deleteByAdmin(
+    postId: string,
+  ): Promise<{ deleted: true; postId: string }> {
+    const media = await this.getMedia(postId);
+    return this.deletePostAndAssets(postId, media);
+  }
+
+  private async deletePostAndAssets(
+    postId: string,
+    media: Array<{ publicId: string; resourceType: MediaResourceType }>,
+    currentPersonId?: string,
+  ): Promise<{ deleted: true; postId: string }> {
     await Promise.all(
       media.map((item) =>
         this.uploadsService.deleteAsset(item.publicId, item.resourceType),
@@ -344,16 +330,27 @@ export class PostsService {
 
     try {
       await this.neo4jService.executeWrite(
-        `MATCH (:Person {personId: $currentPersonId})-[:POSTED]->
-               (post:Post {postId: $postId})
+        `MATCH (post:Post {postId: $postId})
          OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
          WITH post, collect(media) AS mediaItems
          OPTIONAL MATCH (comment:Comment)-[:ON_POST]->(post)
          WITH post, mediaItems, collect(comment) AS comments
+         OPTIONAL MATCH (postNotification:Notification)-[:ABOUT_POST]->(post)
+         WITH post, mediaItems, comments, collect(postNotification) AS postNotifications
+         CALL {
+           WITH comments
+           UNWIND comments AS targetComment
+           OPTIONAL MATCH (commentNotification:Notification)-[:ABOUT_COMMENT]->
+                          (targetComment)
+           RETURN collect(commentNotification) AS commentNotifications
+         }
+         WITH post, mediaItems, comments,
+              postNotifications + commentNotifications AS notifications
+         FOREACH (notification IN notifications | DETACH DELETE notification)
          FOREACH (media IN mediaItems | DETACH DELETE media)
          FOREACH (comment IN comments | DETACH DELETE comment)
          DETACH DELETE post`,
-        { currentPersonId, postId },
+        currentPersonId ? { currentPersonId, postId } : { postId },
       );
       return { deleted: true, postId };
     } catch {
@@ -367,11 +364,26 @@ export class PostsService {
     try {
       await this.neo4jService.executeWrite(
         `MATCH (person:Person {personId: $currentPersonId})
-         MATCH (post:Post {postId: $postId})
+         MATCH (author:Person)-[:POSTED]->(post:Post {postId: $postId})
          MERGE (person)-[like:LIKES]->(post)
          ON CREATE SET like.likedAt = datetime(), like.reaction = 'LIKE'
+         FOREACH (_ IN CASE WHEN person = author THEN [] ELSE [1] END |
+           MERGE (notification:Notification {notificationKey: $notificationKey})
+           ON CREATE SET notification.notificationId = $notificationId,
+                         notification.type = 'LIKE',
+                         notification.createdAt = like.likedAt,
+                         notification.readAt = null
+           MERGE (person)-[:TRIGGERED]->(notification)
+           MERGE (notification)-[:FOR]->(author)
+           MERGE (notification)-[:ABOUT_POST]->(post)
+         )
          RETURN like`,
-        { currentPersonId, postId },
+        {
+          currentPersonId,
+          postId,
+          notificationKey: `LIKE:${currentPersonId}:${postId}`,
+          notificationId: randomUUID(),
+        },
       );
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
@@ -388,9 +400,17 @@ export class PostsService {
         `MATCH (person:Person {personId: $currentPersonId})
          MATCH (post:Post {postId: $postId})
          OPTIONAL MATCH (person)-[like:LIKES]->(post)
-         WITH collect(like) AS likes
-         FOREACH (existing IN likes | DELETE existing)`,
-        { currentPersonId, postId },
+         OPTIONAL MATCH (notification:Notification {
+           notificationKey: $notificationKey
+         })
+         WITH collect(like) AS likes, collect(notification) AS notifications
+         FOREACH (existing IN likes | DELETE existing)
+         FOREACH (notification IN notifications | DETACH DELETE notification)`,
+        {
+          currentPersonId,
+          postId,
+          notificationKey: `LIKE:${currentPersonId}:${postId}`,
+        },
       );
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
@@ -400,67 +420,96 @@ export class PostsService {
   }
 
   async repost(currentPersonId: string, postId: string): Promise<PostResponse> {
-    await this.getOne(currentPersonId, postId);
+    const selectedPost = await this.getOne(currentPersonId, postId);
+    const sourcePostId = selectedPost.repostOf?.postId ?? postId;
+    const repostPostId = randomUUID();
 
     try {
-      await this.neo4jService.executeWrite(
+      const result = await this.neo4jService.executeWrite<RepostRecord>(
         `MATCH (person:Person {personId: $currentPersonId})
-         MATCH (post:Post {postId: $postId})
-         MERGE (person)-[repost:REPOSTED]->(post)
-         ON CREATE SET repost.repostedAt = datetime()
-         RETURN repost`,
-        { currentPersonId, postId },
+         MATCH (source:Post {postId: $sourcePostId})
+         MATCH (sourceAuthor:Person)-[:POSTED]->(source)
+         MERGE (repost:Post {repostKey: $repostKey})
+         ON CREATE SET repost.postId = $repostPostId,
+                       repost.content = $content,
+                       repost.imageUrl = null,
+                       repost.privacy = $privacy,
+                       repost.moderationStatus = 'VISIBLE',
+                       repost.moderationReason = '',
+                       repost.createdAt = datetime(),
+                       repost.updatedAt = datetime()
+         MERGE (person)-[posted:POSTED]->(repost)
+         ON CREATE SET posted.postedAt = datetime()
+         MERGE (repost)-[relation:REPOST_OF]->(source)
+         ON CREATE SET relation.repostedAt = datetime()
+         FOREACH (_ IN CASE WHEN person = sourceAuthor THEN [] ELSE [1] END |
+           MERGE (notification:Notification {notificationKey: $notificationKey})
+           ON CREATE SET notification.notificationId = $notificationId,
+                         notification.type = 'REPOST',
+                         notification.createdAt = relation.repostedAt,
+                         notification.readAt = null
+           MERGE (person)-[:TRIGGERED]->(notification)
+           MERGE (notification)-[:FOR]->(sourceAuthor)
+           MERGE (notification)-[:ABOUT_POST]->(source)
+         )
+         RETURN repost.postId AS repostPostId`,
+        {
+          currentPersonId,
+          sourcePostId,
+          repostKey: `${currentPersonId}:${sourcePostId}`,
+          repostPostId,
+          content: '',
+          privacy: 'PUBLIC',
+          notificationKey: `REPOST:${currentPersonId}:${sourcePostId}`,
+          notificationId: randomUUID(),
+        },
       );
+      const record = result.records[0];
+      if (!record) throw new NotFoundException('Post not found');
+      return this.getOne(currentPersonId, record.get('repostPostId'));
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
     }
-
-    return this.getOne(currentPersonId, postId);
   }
 
   async unrepost(
     currentPersonId: string,
     postId: string,
   ): Promise<PostResponse> {
-    await this.getOne(currentPersonId, postId);
+    const selectedPost = await this.getOne(currentPersonId, postId);
+    const sourcePostId = selectedPost.repostOf?.postId ?? postId;
 
     try {
       await this.neo4jService.executeWrite(
         `MATCH (person:Person {personId: $currentPersonId})
-         MATCH (post:Post {postId: $postId})
-         OPTIONAL MATCH (person)-[repost:REPOSTED]->(post)
-         WITH collect(repost) AS reposts
-         FOREACH (existing IN reposts | DELETE existing)`,
-        { currentPersonId, postId },
+         MATCH (source:Post {postId: $sourcePostId})
+         OPTIONAL MATCH (person)-[:POSTED]->(repost:Post)-[:REPOST_OF]->(source)
+         OPTIONAL MATCH (comment:Comment)-[:ON_POST]->(repost)
+         OPTIONAL MATCH (repostNotification:Notification {
+           notificationKey: $notificationKey
+         })
+         OPTIONAL MATCH (postNotification:Notification)-[:ABOUT_POST]->(repost)
+         OPTIONAL MATCH (commentNotification:Notification)-[:ABOUT_COMMENT]->(comment)
+         WITH repost, collect(DISTINCT comment) AS comments,
+              collect(DISTINCT repostNotification) +
+              collect(DISTINCT postNotification) +
+              collect(DISTINCT commentNotification) AS notifications
+         FOREACH (notification IN notifications | DETACH DELETE notification)
+         FOREACH (comment IN comments | DETACH DELETE comment)
+         FOREACH (_ IN CASE WHEN repost IS NULL THEN [] ELSE [1] END |
+           DETACH DELETE repost
+         )`,
+        {
+          currentPersonId,
+          sourcePostId,
+          notificationKey: `REPOST:${currentPersonId}:${sourcePostId}`,
+        },
       );
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
     }
 
-    return this.getOne(currentPersonId, postId);
-  }
-
-  async share(
-    currentPersonId: string,
-    postId: string,
-    input: SharePostDto,
-  ): Promise<PostResponse> {
-    await this.getOne(currentPersonId, postId);
-
-    try {
-      await this.neo4jService.executeWrite(
-        `MATCH (person:Person {personId: $currentPersonId})
-         MATCH (post:Post {postId: $postId})
-         MERGE (person)-[share:SHARED]->(post)
-         SET share.sharedAt = datetime(), share.channel = $channel
-         RETURN share`,
-        { currentPersonId, postId, channel: input.channel },
-      );
-    } catch {
-      throw new ServiceUnavailableException('Database is unavailable');
-    }
-
-    return this.getOne(currentPersonId, postId);
+    return this.getOne(currentPersonId, sourcePostId);
   }
 
   private async assertOwnership(
@@ -529,6 +578,33 @@ export class PostsService {
     }
   }
 
+  private async getMedia(
+    postId: string,
+  ): Promise<Array<{ publicId: string; resourceType: MediaResourceType }>> {
+    try {
+      const result = await this.neo4jService.executeRead<DeletionRecord>(
+        `MATCH (post:Post {postId: $postId})
+         OPTIONAL MATCH (author:Person)-[:POSTED]->(post)
+         OPTIONAL MATCH (post)-[:HAS_MEDIA]->(media:Media)
+         RETURN author.personId AS authorPersonId,
+                collect(CASE WHEN media IS NULL THEN null ELSE {
+                  publicId: media.publicId,
+                  resourceType: media.resourceType
+                } END) AS media`,
+        { postId },
+      );
+      const record = result.records[0];
+      if (!record) throw new NotFoundException('Post not found');
+      return record.get('media').map((item) => ({
+        publicId: this.requireString(item.publicId, 'media.publicId'),
+        resourceType: this.requireMediaResourceType(item.resourceType),
+      }));
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new ServiceUnavailableException('Database is unavailable');
+    }
+  }
+
   private async assertUserExists(username: string): Promise<void> {
     try {
       const result = await this.neo4jService.executeRead(
@@ -561,10 +637,29 @@ export class PostsService {
       likeCount: this.toSafeCount(record.get('likeCount')),
       commentCount: this.toSafeCount(record.get('commentCount')),
       repostCount: this.toSafeCount(record.get('repostCount')),
-      shareCount: this.toSafeCount(record.get('shareCount')),
       likedByCurrentUser: record.get('likedByCurrentUser'),
       repostedByCurrentUser: record.get('repostedByCurrentUser'),
       isAuthor: record.get('isAuthor'),
+      repostOf: this.mapRepostSource(record),
+    };
+  }
+
+  private mapRepostSource(record: {
+    get<Key extends keyof PostRecord>(key: Key): PostRecord[Key];
+  }): PostResponse['repostOf'] {
+    const sourceNode = record.get('sourcePost');
+    const sourceAuthor = record.get('sourceAuthor');
+    if (!sourceNode || !sourceAuthor) return null;
+
+    const source = sourceNode.properties as Record<string, unknown>;
+    return {
+      postId: this.requireString(source.postId, 'source.postId'),
+      content: this.requireString(source.content, 'source.content'),
+      imageUrl: typeof source.imageUrl === 'string' ? source.imageUrl : null,
+      media: record.get('sourceMedia').map((node) => this.mapMedia(node)),
+      privacy: this.requirePrivacy(source.privacy),
+      createdAt: this.requireTemporal(source.createdAt, 'source.createdAt'),
+      author: this.mapAuthor(sourceAuthor),
     };
   }
 

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -31,10 +32,14 @@ export class AuthService {
     ]);
 
     if (usernameMatch) {
-      throw new ConflictException('Username already exists');
+      throw new ConflictException(
+        'Tên người dùng này đã có người dùng. Bạn thử một tên khác nhé.',
+      );
     }
     if (emailMatch) {
-      throw new ConflictException('Email already exists');
+      throw new ConflictException(
+        'Email này đã được đăng ký. Bạn có thể đăng nhập bằng email này.',
+      );
     }
 
     const passwordHash = await argon2.hash(input.password, {
@@ -45,6 +50,8 @@ export class AuthService {
       email: input.email,
       passwordHash,
       fullName: input.fullName,
+      location: input.location,
+      interests: [],
     });
 
     return {
@@ -60,7 +67,9 @@ export class AuthService {
     const person = await this.usersService.findByIdentifier(input.identifier);
 
     if (!person?.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Tên đăng nhập hoặc mật khẩu chưa đúng. Bạn kiểm tra lại nhé.',
+      );
     }
 
     let passwordMatches = false;
@@ -74,7 +83,20 @@ export class AuthService {
     }
 
     if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Tên đăng nhập hoặc mật khẩu chưa đúng. Bạn kiểm tra lại nhé.',
+      );
+    }
+
+    if (person.accountStatus === 'SUSPENDED') {
+      throw new ForbiddenException(
+        'Tài khoản đang tạm ngưng. Bạn thử lại sau hoặc liên hệ quản trị viên để được hỗ trợ.',
+      );
+    }
+    if (person.accountStatus === 'BANNED') {
+      throw new ForbiddenException(
+        'Tài khoản đã bị khóa. Hãy liên hệ quản trị viên nếu bạn cần hỗ trợ.',
+      );
     }
 
     return {

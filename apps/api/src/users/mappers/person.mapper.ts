@@ -1,5 +1,10 @@
 import { DateTime, Node } from 'neo4j-driver';
-import type { PersonAccount, PublicPerson } from '../types/person.type';
+import type {
+  AccountStatus,
+  PersonAccount,
+  PublicPerson,
+  UserRole,
+} from '../types/person.type';
 import type {
   MeProfile,
   ProfileStats,
@@ -19,6 +24,12 @@ export function mapPersonNode(node: Node): PersonAccount {
     bio: optionalString(properties.bio) ?? '',
     avatarUrl: optionalString(properties.avatarUrl),
     isPrivate: properties.isPrivate === true,
+    location: optionalString(properties.location) ?? '',
+    interests: stringArray(properties.interests),
+    role: userRole(properties.role),
+    accountStatus: accountStatus(properties.accountStatus),
+    suspendedUntil: optionalTemporal(properties.suspendedUntil),
+    moderationReason: optionalString(properties.moderationReason) ?? '',
     createdAt: stringifyTemporal(properties.createdAt, 'createdAt'),
     updatedAt: stringifyTemporal(properties.updatedAt, 'updatedAt'),
   };
@@ -33,8 +44,23 @@ export function toPublicPerson(person: PersonAccount): PublicPerson {
     bio: person.bio,
     avatarUrl: person.avatarUrl,
     isPrivate: person.isPrivate,
+    location: person.location,
+    interests: person.interests,
+    role: person.role,
+    accountStatus: person.accountStatus,
+    suspendedUntil: person.suspendedUntil,
+    moderationReason: person.moderationReason,
     createdAt: person.createdAt,
   };
+}
+
+function userRole(value: unknown): UserRole {
+  return value === 'ADMIN' ? 'ADMIN' : 'USER';
+}
+
+function accountStatus(value: unknown): AccountStatus {
+  if (value === 'SUSPENDED' || value === 'BANNED') return value;
+  return 'ACTIVE';
 }
 
 export function mapPublicProfileNode(
@@ -81,9 +107,17 @@ function mapProfileBase(
     bio: optionalString(properties.bio) ?? '',
     avatarUrl: optionalString(properties.avatarUrl),
     isPrivate: properties.isPrivate === true,
+    location: optionalString(properties.location) ?? '',
+    interests: stringArray(properties.interests),
     createdAt,
     updatedAt: optionalTemporal(properties.updatedAt) ?? createdAt,
   };
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function requireString(value: unknown, propertyName: string): string {
