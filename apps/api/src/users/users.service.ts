@@ -16,6 +16,11 @@ import {
   mapPersonNode,
   mapPublicProfileNode,
 } from './mappers/person.mapper';
+import {
+  containsBlockedProfileContent,
+  isReservedProfileKey,
+  profileFieldKey,
+} from './profile-content.policy';
 import type {
   MeProfile,
   ProfileStats,
@@ -37,6 +42,7 @@ type SearchRecord = {
 
 type ProfileRecord = {
   person: Node;
+  profileFields: Node[];
   friendCount: Integer | number;
   followerCount: Integer | number;
   followingCount: Integer | number;
@@ -73,7 +79,17 @@ const PROFILE_PROJECTION = `
   WHERE $viewerPersonId IS NOT NULL AND viewer.personId = $viewerPersonId
   WITH person, viewer, friendCount, followerCount, followingCount, postCount,
        viewer IS NOT NULL AND viewer.personId = person.personId AS isSelf
-  RETURN person, friendCount, followerCount, followingCount, postCount, isSelf,
+  CALL {
+    WITH person, isSelf
+    OPTIONAL MATCH (person)-[:HAS_PROFILE_FIELD]->(profileField:ProfileField)
+    WHERE coalesce(profileField.moderationStatus, 'VISIBLE') = 'VISIBLE'
+      AND (isSelf OR coalesce(profileField.visibility, 'PUBLIC') = 'PUBLIC')
+    WITH profileField
+    ORDER BY coalesce(profileField.position, 999) ASC, profileField.createdAt ASC
+    RETURN collect(profileField) AS profileFields
+  }
+  RETURN person, profileFields, friendCount, followerCount, followingCount,
+         postCount, isSelf,
          CASE WHEN viewer IS NULL OR isSelf THEN false
               ELSE EXISTS { MATCH (viewer)-[:FOLLOW]->(person) }
          END AS isFollowing,
@@ -188,7 +204,12 @@ export class UsersService {
     }
 
     const { stats, relationship } = this.mapProfileMetadata(record);
-    return mapPublicProfileNode(record.get('person'), stats, relationship);
+    return mapPublicProfileNode(
+      record.get('person'),
+      record.get('profileFields'),
+      stats,
+      relationship,
+    );
   }
 
   async findMe(personId: string): Promise<MeProfile> {
@@ -202,7 +223,12 @@ export class UsersService {
     }
 
     const { stats, relationship } = this.mapProfileMetadata(record);
-    return mapMeProfileNode(record.get('person'), stats, relationship);
+    return mapMeProfileNode(
+      record.get('person'),
+      record.get('profileFields'),
+      stats,
+      relationship,
+    );
   }
 
   async searchUsers(
@@ -255,6 +281,10 @@ export class UsersService {
     const hasIsPrivate = input.isPrivate !== undefined;
     const hasLocation = input.location !== undefined;
     const hasInterests = input.interests !== undefined;
+    const hasProfileFields = input.profileFields !== undefined;
+    const profileFields = hasProfileFields
+      ? this.prepareProfileFields(input.profileFields ?? [])
+      : [];
 
     if (
       !hasFullName &&
@@ -262,7 +292,8 @@ export class UsersService {
       !hasAvatarUrl &&
       !hasIsPrivate &&
       !hasLocation &&
-      !hasInterests
+      !hasInterests &&
+      !hasProfileFields
     ) {
       throw new BadRequestException('At least one profile field is required');
     }
@@ -277,6 +308,32 @@ export class UsersService {
              person.location = CASE WHEN $hasLocation THEN $location ELSE coalesce(person.location, '') END,
              person.interests = CASE WHEN $hasInterests THEN $interests ELSE coalesce(person.interests, []) END,
              person.updatedAt = datetime()
+         WITH person
+         OPTIONAL MATCH (person)-[existingRelation:HAS_PROFILE_FIELD]->
+                        (existingField:ProfileField)
+         WITH person, collect(existingRelation) AS existingRelations,
+              collect(existingField) AS existingFields
+         FOREACH (relation IN CASE WHEN $hasProfileFields THEN existingRelations ELSE [] END |
+           DELETE relation
+         )
+         FOREACH (field IN CASE WHEN $hasProfileFields THEN existingFields ELSE [] END |
+           DELETE field
+         )
+         WITH person
+         FOREACH (item IN CASE WHEN $hasProfileFields THEN $profileFields ELSE [] END |
+           CREATE (field:ProfileField {
+             fieldId: item.fieldId,
+             key: item.key,
+             label: item.label,
+             value: item.value,
+             position: item.position,
+             visibility: item.visibility,
+             moderationStatus: 'VISIBLE',
+             createdAt: datetime(),
+             updatedAt: datetime()
+           })
+           CREATE (person)-[:HAS_PROFILE_FIELD {addedAt: datetime()}]->(field)
+         )
          RETURN person`,
         {
           personId,
@@ -292,6 +349,8 @@ export class UsersService {
           location: input.location ?? null,
           hasInterests,
           interests: input.interests ?? null,
+          hasProfileFields,
+          profileFields,
         },
       );
 
@@ -307,6 +366,45 @@ export class UsersService {
     }
 
     return this.findMe(personId);
+  }
+
+  private prepareProfileFields(
+    fields: NonNullable<UpdateProfileDto['profileFields']>,
+  ) {
+    const keys = new Set<string>();
+
+    return fields.map((field, index) => {
+      const key = profileFieldKey(field.label, index);
+
+      if (isReservedProfileKey(key)) {
+        throw new BadRequestException(
+          `Thuộc tính “${field.label}” trùng với trường hệ thống.`,
+        );
+      }
+      if (keys.has(key)) {
+        throw new BadRequestException(
+          `Thuộc tính “${field.label}” đang bị trùng.`,
+        );
+      }
+      if (
+        containsBlockedProfileContent(field.label) ||
+        containsBlockedProfileContent(field.value)
+      ) {
+        throw new BadRequestException(
+          `Thuộc tính “${field.label}” chứa nội dung không phù hợp.`,
+        );
+      }
+
+      keys.add(key);
+      return {
+        fieldId: randomUUID(),
+        key,
+        label: field.label,
+        value: field.value,
+        position: index,
+        visibility: field.visibility ?? 'PUBLIC',
+      };
+    });
   }
 
   private async findOne(

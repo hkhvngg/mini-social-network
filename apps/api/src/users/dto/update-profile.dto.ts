@@ -1,19 +1,23 @@
 import { Transform, Type } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsOptional,
   IsBoolean,
+  IsIn,
   IsString,
   IsUrl,
   Length,
   Matches,
   MaxLength,
+  ValidateNested,
   ValidateIf,
 } from 'class-validator';
+import { PROFILE_FIELD_VISIBILITIES } from '../types/profile-field.type';
+import type { ProfileFieldVisibility } from '../types/profile-field.type';
 
 function trimString({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() : (value as unknown);
@@ -29,6 +33,24 @@ function normalizeInterests({ value }: TransformFnParams): unknown {
     if (trimmed) unique.set(trimmed.toLocaleLowerCase('vi'), trimmed);
   }
   return [...unique.values()];
+}
+
+export class ProfileFieldInputDto {
+  @ApiProperty({ example: 'Học vấn', minLength: 2, maxLength: 50 })
+  @Transform(trimString)
+  @IsString()
+  @Length(2, 50)
+  label!: string;
+
+  @ApiProperty({ example: 'Đại học Bách Khoa', minLength: 1, maxLength: 300 })
+  @Transform(trimString)
+  @IsString()
+  @Length(1, 300)
+  value!: string;
+
+  @ApiProperty({ enum: PROFILE_FIELD_VISIBILITIES, default: 'PUBLIC' })
+  @IsIn(PROFILE_FIELD_VISIBILITIES)
+  visibility: ProfileFieldVisibility = 'PUBLIC';
 }
 
 export class UpdateProfileDto {
@@ -93,4 +115,16 @@ export class UpdateProfileDto {
   @IsString({ each: true })
   @Length(2, 40, { each: true })
   interests?: string[];
+
+  @ApiPropertyOptional({
+    type: [ProfileFieldInputDto],
+    maxItems: 10,
+    description: 'Các thuộc tính giới thiệu linh động của người dùng.',
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ProfileFieldInputDto)
+  profileFields?: ProfileFieldInputDto[];
 }

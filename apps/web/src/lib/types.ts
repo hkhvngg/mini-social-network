@@ -33,10 +33,21 @@ export type Relationship = {
 
 export type Profile = Omit<AuthUser, "email"> & {
   email?: string;
+  profileFields: ProfileField[];
   updatedAt: string;
   stats: ProfileStats;
   relationship: Relationship;
   canViewConnections: boolean;
+};
+
+export type ProfileField = {
+  fieldId: string;
+  key: string;
+  label: string;
+  value: string;
+  visibility: "PUBLIC" | "PRIVATE";
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type UserSearchResult = {

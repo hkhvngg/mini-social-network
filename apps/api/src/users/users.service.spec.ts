@@ -61,6 +61,7 @@ describe('UsersService', () => {
       isPrivate: false,
       location: 'TP. Hồ Chí Minh',
       interests: ['Thiết kế'],
+      profileFields: [],
       canViewConnections: true,
       createdAt: '2026-07-31T00:00:00Z',
       updatedAt: '2026-07-31T00:01:00Z',
@@ -98,8 +99,68 @@ describe('UsersService', () => {
         location: null,
         hasInterests: false,
         interests: null,
+        hasProfileFields: false,
+        profileFields: [],
       },
     );
+  });
+
+  it('replaces dynamic profile fields with parameterized graph nodes', async () => {
+    const executeWrite = jest.fn().mockResolvedValue({ records: [{}] });
+    const service = new UsersService({
+      executeWrite,
+    } as unknown as Neo4jService);
+    jest.spyOn(service, 'findMe').mockResolvedValue({} as MeProfile);
+
+    await service.updateProfile('person-1', {
+      profileFields: [
+        {
+          label: 'Học vấn',
+          value: 'Đại học Bách Khoa',
+          visibility: 'PUBLIC',
+        },
+      ],
+    });
+
+    const [query, parameters] = executeWrite.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(query).toContain('HAS_PROFILE_FIELD');
+    expect(query).toContain('CREATE (field:ProfileField');
+    expect(parameters).toEqual(
+      expect.objectContaining({
+        hasProfileFields: true,
+        profileFields: [
+          expect.objectContaining({
+            key: 'hoc_van',
+            label: 'Học vấn',
+            value: 'Đại học Bách Khoa',
+            visibility: 'PUBLIC',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rejects inappropriate dynamic profile content before writing', async () => {
+    const executeWrite = jest.fn();
+    const service = new UsersService({
+      executeWrite,
+    } as unknown as Neo4jService);
+
+    await expect(
+      service.updateProfile('person-1', {
+        profileFields: [
+          {
+            label: 'Học vấn',
+            value: 'Đồ án shit',
+            visibility: 'PUBLIC',
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(executeWrite).not.toHaveBeenCalled();
   });
 
   it('searches users with parameters and maps privacy safely', async () => {

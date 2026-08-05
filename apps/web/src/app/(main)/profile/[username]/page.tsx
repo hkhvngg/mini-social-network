@@ -77,6 +77,30 @@ export default function ProfilePage() {
           Tham gia {new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" }).format(new Date(person.createdAt))}
         </div>
 
+        {person.profileFields?.length ? (
+          <dl className="mt-5 grid gap-3 sm:grid-cols-2">
+            {person.profileFields.map((field) => (
+              <div
+                key={field.fieldId}
+                className="rounded-xl bg-neutral-50 px-4 py-3 dark:bg-neutral-900"
+              >
+                <dt className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  {field.label}
+                  {field.visibility === "PRIVATE" ? (
+                    <LockKeyhole
+                      className="size-3.5"
+                      aria-label="Chỉ mình tôi"
+                    />
+                  ) : null}
+                </dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm">
+                  {field.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+
         <div className="mt-5">
           {person.relationship.isSelf ? (
             <EditProfileDialog profile={person} />

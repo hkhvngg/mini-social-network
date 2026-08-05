@@ -28,7 +28,7 @@ Misonet là mạng xã hội thu nhỏ xây dựng theo mô hình graph. Dữ li
 - Biểu mẫu đăng ký có xác nhận mật khẩu; ô mật khẩu hỗ trợ ẩn/hiện nội dung.
 - Mật khẩu dài từ 8 đến 128 ký tự và chỉ nhận ký tự in được trên bàn phím tiếng Anh.
 - Chỉnh sửa họ tên, giới thiệu, nơi sinh sống, sở thích, ảnh đại diện và quyền riêng tư.
-- Tìm kiếm người dùng, xem hồ sơ, người theo dõi, đang theo dõi và bạn bè.
+- Tìm kiếm người dùng, xem hồ sơ, thêm thuộc tính giới thiệu linh động có quyền riêng tư, xem người theo dõi, đang theo dõi và bạn bè.
 - Optimistic UI cho thao tác theo dõi/bỏ theo dõi để giao diện phản hồi ngay.
 
 ### Quan hệ xã hội
@@ -252,6 +252,7 @@ flowchart LR
   B -->|"FOLLOW"| A
   A ---|"FRIEND"| B
   A -->|"POSTED"| P["Post"]
+  A -->|"HAS_PROFILE_FIELD"| PF["ProfileField"]
   B -->|"LIKES"| P
   B -->|"COMMENTED"| K["Comment"]
   K -->|"ON_POST"| P
@@ -265,6 +266,7 @@ flowchart LR
 | Node/quan hệ | Thuộc tính tiêu biểu |
 | --- | --- |
 | `Person` | `personId`, `username`, `email`, `passwordHash`, `fullName`, `avatarUrl`, `isPrivate`, `role`, `accountStatus` |
+| `ProfileField` | `fieldId`, key sinh từ nhãn, `label`, `value`, `visibility`, `moderationStatus`, timestamps |
 | `Post` | `postId`, `content`, `privacy`, `moderationStatus`, `moderationReason`, timestamps |
 | `Comment` | `commentId`, `content`, `moderationStatus`, `moderationReason`, timestamps |
 | `Media` | `mediaId`, `publicId`, `secureUrl`, `resourceType`, kích thước và dung lượng |
@@ -274,6 +276,9 @@ flowchart LR
 | `FOLLOW` | `followedAt` |
 | `FRIEND` | `since`, `source: "MUTUAL_FOLLOW"` |
 | `LIKES` | `likedAt`, `reaction: "LIKE"` |
+| `HAS_PROFILE_FIELD` | `addedAt`; nối người dùng với thuộc tính giới thiệu linh động |
+
+Mỗi người dùng có thể lưu tối đa 10 `ProfileField` khác nhau (ví dụ học vấn, nghề nghiệp, tình trạng hôn nhân) mà không cần thêm property cố định vào `Person`. Backend chặn tên trường hệ thống, nhãn trùng và nội dung không phù hợp; field `PRIVATE` chỉ được trả về cho chủ hồ sơ.
 
 Ví dụ truy vấn gợi ý bạn bè qua bạn chung:
 

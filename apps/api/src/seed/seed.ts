@@ -504,6 +504,10 @@ async function seed(): Promise<void> {
            repost.moderationReason = '',
            repost.createdAt = datetime(item.at),
            repost.updatedAt = datetime(item.at)
+       WITH person, repost, source, item
+       OPTIONAL MATCH (previousAuthor:Person)-[stalePosted:POSTED]->(repost)
+       WHERE previousAuthor <> person
+       DELETE stalePosted
        MERGE (person)-[posted:POSTED]->(repost)
        SET posted.postedAt = datetime(item.at)
        MERGE (repost)-[relation:REPOST_OF]->(source)

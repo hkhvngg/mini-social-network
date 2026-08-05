@@ -11,6 +11,10 @@ import type {
   PublicProfile,
 } from '../types/person-public.type';
 import type { RelationshipStatus } from '../types/relationship-status.type';
+import type {
+  ProfileField,
+  ProfileFieldVisibility,
+} from '../types/profile-field.type';
 
 export function mapPersonNode(node: Node): PersonAccount {
   const properties = node.properties as Record<string, unknown>;
@@ -65,11 +69,12 @@ function accountStatus(value: unknown): AccountStatus {
 
 export function mapPublicProfileNode(
   node: Node,
+  profileFieldNodes: Node[],
   stats: ProfileStats,
   relationship: RelationshipStatus,
 ): PublicProfile {
   return {
-    ...mapProfileBase(node),
+    ...mapProfileBase(node, profileFieldNodes),
     canViewConnections:
       !((node.properties as Record<string, unknown>).isPrivate === true) ||
       relationship.isSelf,
@@ -80,13 +85,14 @@ export function mapPublicProfileNode(
 
 export function mapMeProfileNode(
   node: Node,
+  profileFieldNodes: Node[],
   stats: ProfileStats,
   relationship: RelationshipStatus,
 ): MeProfile {
   const properties = node.properties as Record<string, unknown>;
 
   return {
-    ...mapProfileBase(node),
+    ...mapProfileBase(node, profileFieldNodes),
     canViewConnections: true,
     email: requireString(properties.email, 'email'),
     stats,
@@ -96,6 +102,7 @@ export function mapMeProfileNode(
 
 function mapProfileBase(
   node: Node,
+  profileFieldNodes: Node[],
 ): Omit<PublicProfile, 'stats' | 'relationship' | 'canViewConnections'> {
   const properties = node.properties as Record<string, unknown>;
   const createdAt = stringifyTemporal(properties.createdAt, 'createdAt');
@@ -109,9 +116,29 @@ function mapProfileBase(
     isPrivate: properties.isPrivate === true,
     location: optionalString(properties.location) ?? '',
     interests: stringArray(properties.interests),
+    profileFields: profileFieldNodes.map(mapProfileFieldNode),
     createdAt,
     updatedAt: optionalTemporal(properties.updatedAt) ?? createdAt,
   };
+}
+
+function mapProfileFieldNode(node: Node): ProfileField {
+  const properties = node.properties as Record<string, unknown>;
+  const createdAt = stringifyTemporal(properties.createdAt, 'createdAt');
+
+  return {
+    fieldId: requireString(properties.fieldId, 'profileField.fieldId'),
+    key: requireString(properties.key, 'profileField.key'),
+    label: requireString(properties.label, 'profileField.label'),
+    value: requireString(properties.value, 'profileField.value'),
+    visibility: profileFieldVisibility(properties.visibility),
+    createdAt,
+    updatedAt: optionalTemporal(properties.updatedAt) ?? createdAt,
+  };
+}
+
+function profileFieldVisibility(value: unknown): ProfileFieldVisibility {
+  return value === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
 }
 
 function stringArray(value: unknown): string[] {

@@ -1,4 +1,5 @@
 import type { RelationshipStatus } from './relationship-status.type';
+import type { ProfileField } from './profile-field.type';
 
 export type ProfileStats = {
   friendCount: number;
@@ -16,6 +17,7 @@ export type PublicProfile = {
   isPrivate: boolean;
   location: string;
   interests: string[];
+  profileFields: ProfileField[];
   canViewConnections: boolean;
   createdAt: string;
   updatedAt: string;
